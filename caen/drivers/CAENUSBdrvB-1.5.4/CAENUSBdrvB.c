@@ -129,7 +129,7 @@ static struct v1718_usb_data *minor_table[MAX_DEVICES];
 #if LINUX_VERSION_CODE <= VERSION(2,6,35)
 static DECLARE_MUTEX (minor_table_mutex);
 #else
-static DEFINE_SEMAPHORE (minor_table_mutex);
+static DEFINE_SEMAPHORE (minor_table_mutex,42);
 #endif
 
 static void v1718_delete(struct v1718_usb_data *v1718)
