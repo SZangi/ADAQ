@@ -524,7 +524,7 @@ int ADAQDigitizer::SetTriggerEdge(int Channel, string TriggerEdge)
 }
 
 
-int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level)
+int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window)
 {
   CommandStatus = -42;
 
@@ -544,8 +544,20 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level)
     }
     else if (BoardFirmwareType == "PSD"){
       string BoardModel = GetBoardModelName();
-      
-      if (BoardModel == "DT5790" or BoardModel == "DT5790M"){
+
+      if (BoardModel == "V1725" or BoardModel == "V1730"){
+        std::cout<<"Paired channel coincidence not yet supported."<<std::endl;
+        std::cout<<"Coincidence Not Enabled"<<std::endl;
+      }
+
+      else{
+        // All registers except for Trigger Validation are the same between PSD
+        // firmware boards. Currently setup to only do coincidence between two 
+        // channels, specifically channel 0 & 1. The specific channels that are
+        // enabled for coincidence involve different registers, thus, to implement
+        // coincidence with more channels, we must either grab the enabled channels
+        // from the settings or allow the user to set the channels in a menu?
+
         // Enable Propagation of ITL to mezzanines
         uint32_t ITLEnableMask = 0;
 
@@ -578,7 +590,7 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level)
 
         uint32_t CoincidenceWindow_And_Mask = 0x7ffffc00;
         uint32_t CoincidenceWindow_Mask = 0;
-        uint32_t CoincidenceWindow_Value = 0x2;
+        uint32_t CoincidenceWindow_Value = Window;
 
           // Channel 0
         CommandStatus = GetRegisterValue(0x1070, &CoincidenceWindow_Mask);
@@ -621,27 +633,49 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level)
         TriggerLatency_Mask = TriggerLatency_Mask | TriggerLatency_Value;
         CommandStatus = SetRegisterValue(0x116c, TriggerLatency_Mask);
 
-        // Write trigger validation logic (actually tell the boards to do what we already told them to do)
-        // Bit 2 controls channel 0, Bit 3 controls channel 1. 01 to propagate TRG_REQ to motherboard
-        // Bits 9:8 controls validation: 00 for OR, 01 for AND, 10 for MAJORITY
+        if (BoardModel == "DT5790" or BoardModel == "DT5790M"){
+          
+          // Write trigger validation logic (actually tell the boards to do what we already told them to do)
+          // Bit 2 controls channel 0, Bit 3 controls channel 1. 01 to propagate TRG_REQ to motherboard
+          // Bits 9:8 controls validation: 00 for OR, 01 for AND, 10 for MAJORITY
 
-        uint32_t TriggerValidation_Mask = 0;
-        uint32_t TriggerValidation_Value = 0x10c;
+          uint32_t TriggerValidation_Mask = 0;
+          uint32_t TriggerValidation_Value = 0x10c;
 
-        // Channel 0
-        CommandStatus = GetRegisterValue(0x8188,&TriggerValidation_Mask);
-        TriggerValidation_Mask = TriggerValidation_Mask | TriggerValidation_Value;
-        CommandStatus = SetRegisterValue(0x8188, TriggerValidation_Mask);
+          // Channel 0
+          CommandStatus = GetRegisterValue(0x8188,&TriggerValidation_Mask);
+          TriggerValidation_Mask = TriggerValidation_Mask | TriggerValidation_Value;
+          CommandStatus = SetRegisterValue(0x8188, TriggerValidation_Mask);
 
-        TriggerValidation_Mask = 0;
+          TriggerValidation_Mask = 0;
 
-        //Channel 1
-        CommandStatus = GetRegisterValue(0x818C,&TriggerValidation_Mask);
-        TriggerValidation_Mask = TriggerValidation_Mask | TriggerValidation_Value;
-        CommandStatus = SetRegisterValue(0x818C, TriggerValidation_Mask);
+          //Channel 1
+          CommandStatus = GetRegisterValue(0x818C,&TriggerValidation_Mask);
+          TriggerValidation_Mask = TriggerValidation_Mask | TriggerValidation_Value;
+          CommandStatus = SetRegisterValue(0x818C, TriggerValidation_Mask);
 
-        std::cout<<"Coincidence Enabled!"<<std::endl;
+          std::cout<<"Coincidence Enabled!"<<std::endl;
 
+        }
+
+        else if(BoardModel == "V1720" or BoardModel == "V1751"){
+          uint32_t TriggerValidation_Mask = 0;
+          uint32_t TriggerValidation_Value = 0x103;
+
+          // Channel 0
+          CommandStatus = GetRegisterValue(0x8180,&TriggerValidation_Mask);
+          TriggerValidation_Mask = TriggerValidation_Mask | TriggerValidation_Value;
+          CommandStatus = SetRegisterValue(0x8180, TriggerValidation_Mask);
+
+          TriggerValidation_Mask = 0;
+
+          //Channel 1
+          CommandStatus = GetRegisterValue(0x8184,&TriggerValidation_Mask);
+          TriggerValidation_Mask = TriggerValidation_Mask | TriggerValidation_Value;
+          CommandStatus = SetRegisterValue(0x8184, TriggerValidation_Mask);
+
+          std::cout<<"Coincidence Enabled!"<<std::endl;
+        }
       }
     }
   }
