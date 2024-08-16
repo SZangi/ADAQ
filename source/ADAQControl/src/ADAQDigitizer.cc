@@ -524,7 +524,7 @@ int ADAQDigitizer::SetTriggerEdge(int Channel, string TriggerEdge)
 }
 
 
-int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window)
+int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window, int Channel1, int Channel2)
 {
   CommandStatus = -42;
 
@@ -544,6 +544,16 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window)
     }
     else if (BoardFirmwareType == "PSD"){
       string BoardModel = GetBoardModelName();
+      // Check that user selected channels are enabled. If not, return command status,
+      // throw an error, and do not enable coincidence.
+      uint32_t Data32 = 0;
+      CommandStatus = GetChannelEnableMask(&Data32);
+      if(!(Data32 & (1 << Channel1)) || !(Data32 & (1 << Channel2))){
+        std::cout <<"Error! Requested Coincidence Channel Not Enabled."<<std::endl;
+        std::cout<< "Please Select an Enabled Channel" << std::endl;
+        return CommandStatus;
+      }
+    
 
       if (BoardModel == "V1725" or BoardModel == "V1730"){
         std::cout<<"Paired channel coincidence not yet supported."<<std::endl;
@@ -575,16 +585,24 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window)
 
         uint32_t CoincidenceEnable_Value = 0x40000;
 
-          // Channel 0
-        CommandStatus = GetRegisterValue(0x1080, &CoincidenceEnable_Mask);
-        CoincidenceEnable_Mask = CoincidenceEnable_Mask | CoincidenceEnable_Value;
-        CommandStatus = SetRegisterValue(0x1080,CoincidenceEnable_Mask);
+        uint32_t Channel1_bitshifted = Channel1 << 8;
 
-          // Channel 1
-        CoincidenceEnable_Mask = 0;
-        CommandStatus = GetRegisterValue(0x1180, &CoincidenceEnable_Mask);
+        uint32_t Channel1_Register = 0x1080 | Channel1_bitshifted;
+
+          // First Channel
+        CommandStatus = GetRegisterValue(Channel1_Register, &CoincidenceEnable_Mask);
         CoincidenceEnable_Mask = CoincidenceEnable_Mask | CoincidenceEnable_Value;
-        CommandStatus = SetRegisterValue(0x1180, CoincidenceEnable_Mask);
+        CommandStatus = SetRegisterValue(Channel1_Register,CoincidenceEnable_Mask);
+
+        uint32_t Channel2_bitshifted = Channel2 << 8;
+
+        uint32_t Channel2_Register = 0x1080 | Channel2_bitshifted;
+
+          // Second Channel
+        CoincidenceEnable_Mask = 0;
+        CommandStatus = GetRegisterValue(Channel2_Register, &CoincidenceEnable_Mask);
+        CoincidenceEnable_Mask = CoincidenceEnable_Mask | CoincidenceEnable_Value;
+        CommandStatus = SetRegisterValue(Channel2_Register, CoincidenceEnable_Mask);
 
         // Set Coincidence Windows in number of clock cycles
 
@@ -592,22 +610,26 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window)
         uint32_t CoincidenceWindow_Mask = 0;
         uint32_t CoincidenceWindow_Value = Window;
 
-          // Channel 0
-        CommandStatus = GetRegisterValue(0x1070, &CoincidenceWindow_Mask);
+        Channel1_Register = 0x1070 | Channel1_bitshifted;
+
+        Channel2_Register = 0x1070 | Channel2_bitshifted;
+
+          // First Channel
+        CommandStatus = GetRegisterValue(Channel1_Register, &CoincidenceWindow_Mask);
         // this keeps the values in bits [31:10] and sets the values in bits [9:0]
         // (which we are allowed) to write to 0
         CoincidenceWindow_Mask = CoincidenceEnable_Mask & CoincidenceWindow_And_Mask;
         // Now we mask the edited values with the actual values we want to write
         CoincidenceWindow_Mask = CoincidenceWindow_Mask | CoincidenceWindow_Value;
-        CommandStatus = SetRegisterValue(0x1070, CoincidenceWindow_Mask);
+        CommandStatus = SetRegisterValue(Channel1_Register, CoincidenceWindow_Mask);
 
         CoincidenceWindow_Mask = 0;
 
-          // Channel 1
-        CommandStatus = GetRegisterValue(0x1170, &CoincidenceWindow_Mask);
+          // Second Channel
+        CommandStatus = GetRegisterValue(Channel2_Register, &CoincidenceWindow_Mask);
         CoincidenceWindow_Mask = CoincidenceEnable_Mask & CoincidenceWindow_And_Mask;        
         CoincidenceWindow_Mask = CoincidenceWindow_Mask | CoincidenceWindow_Value;
-        CommandStatus = SetRegisterValue(0x1170,CoincidenceWindow_Mask);
+        CommandStatus = SetRegisterValue(Channel2_Register,CoincidenceWindow_Mask);
 
         // Set Trigger Latency (always equal to 9 clock cycles. Manual says it has to be this way)
         // I think the STD firmware software writes 32 to this by default, due to different register
@@ -619,19 +641,23 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window)
         uint32_t TriggerLatency_And_Mask = 0x7ffffc00;
         uint32_t TriggerLatency_Value = 0x9;
 
+        Channel1_Register = 0x106c | Channel1_bitshifted;
+
+        Channel2_Register = 0x106c | Channel2_bitshifted;
+
           // Channel 0
-        CommandStatus = GetRegisterValue(0x106c, &TriggerLatency_Mask);
+        CommandStatus = GetRegisterValue(Channel1_Register, &TriggerLatency_Mask);
         TriggerLatency_Mask = TriggerLatency_And_Mask & TriggerLatency_Mask;
         TriggerLatency_Mask = TriggerLatency_Mask | TriggerLatency_Value;
-        CommandStatus = SetRegisterValue(0x106c, TriggerLatency_Mask);
+        CommandStatus = SetRegisterValue(Channel1_Register, TriggerLatency_Mask);
 
         TriggerLatency_Mask = 0;
 
           // Channel 1
-        CommandStatus = GetRegisterValue(0x116c, &TriggerLatency_Mask);
+        CommandStatus = GetRegisterValue(Channel2_Register, &TriggerLatency_Mask);
         TriggerLatency_Mask = TriggerLatency_And_Mask & TriggerLatency_Mask;
         TriggerLatency_Mask = TriggerLatency_Mask | TriggerLatency_Value;
-        CommandStatus = SetRegisterValue(0x116c, TriggerLatency_Mask);
+        CommandStatus = SetRegisterValue(Channel2_Register, TriggerLatency_Mask);
 
         if (BoardModel == "DT5790" or BoardModel == "DT5790M"){
           
@@ -642,17 +668,21 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window)
           uint32_t TriggerValidation_Mask = 0;
           uint32_t TriggerValidation_Value = 0x10c;
 
+          Channel1_Register = 0x8188 + 4*Channel1;
+
+          Channel2_Register = 0x8188 + 4*Channel2;
+
           // Channel 0
-          CommandStatus = GetRegisterValue(0x8188,&TriggerValidation_Mask);
+          CommandStatus = GetRegisterValue(Channel1_Register,&TriggerValidation_Mask);
           TriggerValidation_Mask = TriggerValidation_Mask | TriggerValidation_Value;
-          CommandStatus = SetRegisterValue(0x8188, TriggerValidation_Mask);
+          CommandStatus = SetRegisterValue(Channel1_Register, TriggerValidation_Mask);
 
           TriggerValidation_Mask = 0;
 
           //Channel 1
-          CommandStatus = GetRegisterValue(0x818C,&TriggerValidation_Mask);
+          CommandStatus = GetRegisterValue(Channel2_Register,&TriggerValidation_Mask);
           TriggerValidation_Mask = TriggerValidation_Mask | TriggerValidation_Value;
-          CommandStatus = SetRegisterValue(0x818C, TriggerValidation_Mask);
+          CommandStatus = SetRegisterValue(Channel2_Register, TriggerValidation_Mask);
 
           std::cout<<"Coincidence Enabled!"<<std::endl;
 
@@ -662,17 +692,21 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window)
           uint32_t TriggerValidation_Mask = 0;
           uint32_t TriggerValidation_Value = 0x103;
 
+          Channel1_Register = 0x8180 + 4*Channel1;
+
+          Channel2_Register = 0x8180 + 4*Channel2;
+
           // Channel 0
-          CommandStatus = GetRegisterValue(0x8180,&TriggerValidation_Mask);
+          CommandStatus = GetRegisterValue(Channel1_Register,&TriggerValidation_Mask);
           TriggerValidation_Mask = TriggerValidation_Mask | TriggerValidation_Value;
-          CommandStatus = SetRegisterValue(0x8180, TriggerValidation_Mask);
+          CommandStatus = SetRegisterValue(Channel1_Register, TriggerValidation_Mask);
 
           TriggerValidation_Mask = 0;
 
           //Channel 1
-          CommandStatus = GetRegisterValue(0x8184,&TriggerValidation_Mask);
+          CommandStatus = GetRegisterValue(Channel2_Register,&TriggerValidation_Mask);
           TriggerValidation_Mask = TriggerValidation_Mask | TriggerValidation_Value;
-          CommandStatus = SetRegisterValue(0x8184, TriggerValidation_Mask);
+          CommandStatus = SetRegisterValue(Channel2_Register, TriggerValidation_Mask);
 
           std::cout<<"Coincidence Enabled!"<<std::endl;
         }

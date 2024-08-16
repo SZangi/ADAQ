@@ -110,7 +110,7 @@ public:
 
   int SetTriggerEdge(int, string);
 
-  int SetTriggerCoincidence(bool, int, int);
+  int SetTriggerCoincidence(bool, int, int, int, int);
 
   // Acquisition control
 
