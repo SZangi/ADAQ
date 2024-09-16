@@ -617,9 +617,9 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window, int
         uint32_t TriggerLatency_Mask = 0;
         uint32_t TriggerLatency_And_Mask = 0x7ffffc00;
         uint32_t TriggerLatency_Value = 0x9;
-        
+
         uint32_t Pwr = Channel1 % 2;
-        if (Channel1+(-1)**Pwr == Channel2){
+        if (Channel1+pow(-1,Pwr) == Channel2){
           uint32_t TriggerLatency_Value = 0x2;
         }    
 
@@ -649,7 +649,7 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window, int
           // if the other channel is 1 greater, and if it is odd, it is paired if the other channel
           // is one less. 
 
-        if (Channel1+(-1)**Pwr == Channel2){
+        if (Channel1+pow(-1,Pwr) == Channel2){
           uint32_t AlgorithmControl_Mask = 0;
 
           uint32_t AlgorithmControl_Value = 0x60;
