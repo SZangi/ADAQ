@@ -556,7 +556,7 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window, int
     
 
       if (BoardModel == "V1725" or BoardModel == "V1730"){
-        // Set channels to coincidence 
+        // Set channels to coincidence per the DPP Algorithm
 
         uint32_t CoincidenceEnable_Mask = 0;
 
@@ -595,7 +595,7 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window, int
         CommandStatus = GetRegisterValue(Channel1_Register, &CoincidenceWindow_Mask);
         // this keeps the values in bits [31:10] and sets the values in bits [9:0]
         // (which we are allowed) to write to 0
-        CoincidenceWindow_Mask = CoincidenceEnable_Mask & CoincidenceWindow_And_Mask;
+        CoincidenceWindow_Mask = CoincidenceWindow_Mask & CoincidenceWindow_And_Mask;
         // Now we mask the edited values with the actual values we want to write
         CoincidenceWindow_Mask = CoincidenceWindow_Mask | CoincidenceWindow_Value;
         CommandStatus = SetRegisterValue(Channel1_Register, CoincidenceWindow_Mask);
@@ -604,11 +604,11 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window, int
 
           // Second Channel
         CommandStatus = GetRegisterValue(Channel2_Register, &CoincidenceWindow_Mask);
-        CoincidenceWindow_Mask = CoincidenceEnable_Mask & CoincidenceWindow_And_Mask;        
+        CoincidenceWindow_Mask = CoincidenceWindow_Mask & CoincidenceWindow_And_Mask;        
         CoincidenceWindow_Mask = CoincidenceWindow_Mask | CoincidenceWindow_Value;
         CommandStatus = SetRegisterValue(Channel2_Register,CoincidenceWindow_Mask);
 
-        // Set Trigger Latency (equal to 2 clock cycles here. Manual says it has to be this way)
+        // Set Trigger Latency (equal to 9 clock cycles here. Manual says it has to be this way)
         // I think the STD firmware software writes 32 to this by default, due to different register
         // map structures, so we fully overwrite that here.
         // From investigating the manual, and what is intially written to it, it looks like bits [0:9]
@@ -620,7 +620,8 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window, int
 
         uint32_t Pwr = Channel1 % 2;
         if (Channel1+pow(-1,Pwr) == Channel2){
-          uint32_t TriggerLatency_Value = 0x2;
+          // Set the latency to 2 clock cycles if the coincidence is in couple
+          TriggerLatency_Value = 0x2;
         }    
 
         Channel1_Register = 0x106c | Channel1_bitshifted;
@@ -641,7 +642,7 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window, int
         TriggerLatency_Mask = TriggerLatency_Mask | TriggerLatency_Value;
         CommandStatus = SetRegisterValue(Channel2_Register, TriggerLatency_Mask);
 
-          // DPP Algorithm Control
+          // DPP Algorithm Control 2
           // This changes depending on whether or not the channels are paired
           //
           // To determine if channels are paired, we check if Channel1 + (-1)^(Channel1%2) == Channel2
@@ -652,6 +653,8 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window, int
         if (Channel1+pow(-1,Pwr) == Channel2){
           uint32_t AlgorithmControl_Mask = 0;
 
+          uint32_t AlgorithmControl_And_Mask = 0x7fffffd4;
+
           uint32_t AlgorithmControl_Value = 0x60;
           
           if(Channel1 < Channel2)
@@ -661,6 +664,8 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window, int
 
           CommandStatus = GetRegisterValue(Channel1_Register, &AlgorithmControl_Mask);
 
+          AlgorithmControl_Mask = AlgorithmControl_And_Mask & AlgorithmControl_Mask;
+
           AlgorithmControl_Mask = AlgorithmControl_Mask | AlgorithmControl_Value;
 
           CommandStatus = SetRegisterValue(Channel1_Register, AlgorithmControl_Mask);
@@ -668,7 +673,7 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window, int
           std::cout<<"Coincidence Enabled Inside of Couple"<<std::endl;
         }
         else{
-         // Turn on motherboard coincidence
+         // Turn on ITL signal propagation
           uint32_t ITLEnable_Mask = 0;
 
           uint32_t ITLEnable_Value = 0x4;
@@ -679,17 +684,23 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window, int
 
           CommandStatus = SetRegisterValue(0x8000, ITLEnable_Mask);
 
-
+          // Set the DPP Coincidence Algorithm 2
           uint32_t AlgorithmControl_Mask = 0;
 
-          uint32_t AlgorithmControl_Value = 0x55;
+          uint32_t AlgorithmControl_And_Mask = 0x7fffffd8;
+
+          // If coincidence channel is even set this to 55 otherwise set
+          // to 56. This value can be different for each coincidence channel
+          // but is the same across a couple.
+          uint32_t AlgorithmControl_Value = 0x55; 
 
           // Only set the register corresponding with the first channel in a couple
 
-          uint32_t Channel1_Couple = Channel1 - Pwr*1;
+          uint32_t Channel1_Couple = Channel1 - Pwr*(1);
           uint32_t Channel1_Couple_bitshifted = Channel1_Couple << 8;
 
-          uint32_t Channel2_Couple = Channel2 - (Channel2%2)*1;
+          uint32_t Channel2_Couple = Channel2 - (Channel2 % 2)*(1);
+                  
           uint32_t Channel2_Couple_bitshifted = Channel2_Couple << 8;
 
           Channel1_Register = 0x1084 | Channel1_Couple_bitshifted;
@@ -697,25 +708,32 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window, int
           Channel2_Register = 0x1084 | Channel2_Couple_bitshifted;
 
           // Set Channel 1 DPP algorithm
+          if(Channel1 % 2 == 1)
+            AlgorithmControl_Value = 0x56;
 
           CommandStatus = GetRegisterValue(Channel1_Register, &AlgorithmControl_Mask);
+          AlgorithmControl_Mask = AlgorithmControl_And_Mask & AlgorithmControl_Mask;
           AlgorithmControl_Mask = AlgorithmControl_Mask | AlgorithmControl_Value;
           CommandStatus = SetRegisterValue(Channel1_Register, AlgorithmControl_Mask);
 
           // Set Channel 2 DPP algorithm
+          AlgorithmControl_Value = 0x55;
+          if (Channel2 % 2 == 1)
+            AlgorithmControl_Value = 0x56;
 
           CommandStatus = GetRegisterValue(Channel2_Register, &AlgorithmControl_Mask);
+          AlgorithmControl_Mask = AlgorithmControl_And_Mask & AlgorithmControl_Mask;
           AlgorithmControl_Mask = AlgorithmControl_Mask | AlgorithmControl_Value;
           CommandStatus = SetRegisterValue(Channel2_Register, AlgorithmControl_Mask);
 
-          // Set the Trigger Validation Mask
+          // Set the Trigger Validation Logic
 
           uint32_t TriggerValidation_Mask = 0;
-          uint32_t TriggerValidation_Value = 0x103;
+          uint32_t TriggerValidation_Value = 0x10F;
 
-          Channel1_Register = 0x8180 + 4*Channel1_Couple;
+          Channel1_Register = 0x8180 + 4*Channel1_Couple/2;
 
-          Channel2_Register = 0x8180 + 4*Channel2_Couple;
+          Channel2_Register = 0x8180 + 4*Channel2_Couple/2;
 
           // Channel 0
           CommandStatus = GetRegisterValue(Channel1_Register,&TriggerValidation_Mask);
@@ -729,7 +747,8 @@ int ADAQDigitizer::SetTriggerCoincidence(bool Enable, int Level, int Window, int
           TriggerValidation_Mask = TriggerValidation_Mask | TriggerValidation_Value;
           CommandStatus = SetRegisterValue(Channel2_Register, TriggerValidation_Mask);
 
-        std::cout<<"Coincidence Enabled Outside of Couple"<<std::endl;
+        std::cout<<"Ch "<<Channel1<< " AND Any Coincidence Enabled"<<std::endl;
+        std::cout<<"Ch "<<Channel2<< " AND Ch "<<Channel1<<" Coincidence Enabled on Ch "<<Channel2<<std::endl;
         }
       }
 
